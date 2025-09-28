@@ -13,6 +13,9 @@ return new class extends Migration
     {
         Schema::create('events', function (Blueprint $table) {
             $table->id();
+            $table->string('title');
+            $table->date('date')->nullable();
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->timestamps();
         });
     }

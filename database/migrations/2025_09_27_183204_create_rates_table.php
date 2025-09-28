@@ -13,7 +13,11 @@ return new class extends Migration
     {
         Schema::create('rates', function (Blueprint $table) {
             $table->id();
-            $table->timestamps();
+            $table->enum('source', ['BCV', 'Paralelo', 'Custom']);
+            $table->decimal('value', 12, 4);
+            $table->string('currency', 3)->default('VES'); // or USD
+            $table->timestamp('effective_at'); // was fetched_at
+            $table->timestamps(); // created_at + updated_at
         });
     }
 

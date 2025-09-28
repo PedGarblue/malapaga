@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('participations', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('item_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('consumer_id')->constrained()->cascadeOnDelete();
+            $table->integer('qty')->default(1);
+            $table->foreignId('paid_by_id')->nullable()->constrained('consumers')->nullOnDelete();
             $table->timestamps();
         });
     }

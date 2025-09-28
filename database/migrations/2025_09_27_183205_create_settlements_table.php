@@ -13,6 +13,11 @@ return new class extends Migration
     {
         Schema::create('settlements', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('event_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('payer_id')->constrained('consumers')->cascadeOnDelete();
+            $table->foreignId('payee_id')->constrained('consumers')->cascadeOnDelete();
+            $table->decimal('amount', 12, 2);
+            $table->boolean('paid')->default(false);
             $table->timestamps();
         });
     }

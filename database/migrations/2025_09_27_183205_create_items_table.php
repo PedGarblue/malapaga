@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('items', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('event_id')->constrained()->cascadeOnDelete();
+            $table->string('name');
+            $table->decimal('price_usd', 12, 2);
+            $table->foreignId('rate_id')->nullable()->constrained()->nullOnDelete();
             $table->timestamps();
         });
     }
