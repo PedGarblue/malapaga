@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'dolar_api' => [
+        'base_url' => env('DOLAR_API_BASE_URL', 'https://ve.dolarapi.com'),
+        'timeout' => env('DOLAR_API_TIMEOUT', 10),
+    ],
+
 ];
