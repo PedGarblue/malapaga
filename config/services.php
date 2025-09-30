@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    'dolar_api' => [
+        'base_url' => env('DOLAR_API_BASE_URL', 'https://ve.dolarapi.com'),
+        'timeout' => env('DOLAR_API_TIMEOUT', 10),
+    ],
+
+    'bcv' => [
+        'url' => env('BCV_BASE_URL', 'https://www.bcv.org.ve/'),
+        'timeout' => env('BCV_TIMEOUT', 10),
+    ],
+
 ];
