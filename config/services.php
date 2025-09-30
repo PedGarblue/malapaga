@@ -40,4 +40,9 @@ return [
         'timeout' => env('DOLAR_API_TIMEOUT', 10),
     ],
 
+    'bcv' => [
+        'base_url' => env('BCV_BASE_URL', 'https://www.bcv.org.ve'),
+        'timeout' => env('BCV_TIMEOUT', 10),
+    ],
+
 ];
