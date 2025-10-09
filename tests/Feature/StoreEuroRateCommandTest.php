@@ -38,7 +38,7 @@ it('stores the BCV euro rate when available', function () {
     expect($rate->source)->toBe('BCV');
     expect((float) $rate->value)->toBe(208.2847);
     expect($rate->currency)->toBe('VES');
-    expect($rate->effective_at->equalTo(Carbon::parse('2024-01-01 12:34:56', 'UTC')))->toBeTrue();
+    expect($rate->effective_at->eq(Carbon::parse('2024-01-01 12:34:56', 'UTC')))->toBeTrue();
 
     Carbon::setTestNow();
 });

@@ -38,8 +38,8 @@ class StoreEuroRate extends Command
 
         Rate::create([
             'source' => $rate['source'],
-            'value' => number_format($rate['value'], 4, '.', ''),
-            'currency' => $rate['currency'] ?? 'EUR',
+            'value' => $rate['value'],
+            'currency' => $rate['currency'],
             'effective_at' => $rate['effective_at'],
         ]);
 
