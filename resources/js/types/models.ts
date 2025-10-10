@@ -64,7 +64,7 @@ export type OutboxAction = 'create' | 'update' | 'delete';
 
 export interface Outbox {
     id: string;                 // uuid
-    table: 'events' | 'consumers' | 'items' | 'participations' | 'settlements';
+    table: 'events' | 'consumers' | 'items' | 'participations' | 'settlements' | 'rates';
     action: OutboxAction;
     payload: any;               // the record (may include temp IDs)
     created_at: number;         // Date.now()
