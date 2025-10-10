@@ -43,6 +43,7 @@ return [
     'bcv' => [
         'base_url' => env('BCV_BASE_URL', 'https://www.bcv.org.ve'),
         'timeout' => env('BCV_TIMEOUT', 10),
+        'verify_ssl' => env('BCV_VERIFY_SSL', true),
     ],
 
 ];

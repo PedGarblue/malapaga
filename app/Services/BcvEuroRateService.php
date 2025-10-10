@@ -15,6 +15,9 @@ class BcvEuroRateService
 
         $response = Http::baseUrl($baseUrl)
             ->timeout(config('services.bcv.timeout', 10))
+            ->withOptions([
+                'verify' => config('services.bcv.verify_ssl', true),
+            ])
             ->get('/')
             ->throw();
 
