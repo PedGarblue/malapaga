@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import laravel from 'laravel-vite-plugin';
 import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
     plugins: [
@@ -22,6 +23,18 @@ export default defineConfig({
                     includeAbsolute: false,
                 },
             },
+        }),
+        VitePWA({
+            registerType: 'autoUpdate',
+            manifest: {
+                name: 'Malapaga',
+                short_name: 'Malapaga',
+                description: 'Malapaga',
+                theme_color: '#ffffff',
+                background_color: '#ffffff',
+                display: 'standalone',
+                scope: '/',
+            }
         }),
     ],
 });
