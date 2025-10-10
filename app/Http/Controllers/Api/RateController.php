@@ -18,17 +18,20 @@ class RateController extends Controller
     }
 
     /**
-     * Get the latest rate for each source.
+     * Get the latest rate for each source and currency_to combination.
      */
     public function latest()
     {
-        // Get all unique sources
-        $sources = Rate::distinct()->pluck('source');
+        // Get all unique combinations of source and currency_to
+        $combinations = Rate::select('source', 'currency_to')
+            ->distinct()
+            ->get();
         
         $latestRates = [];
         
-        foreach ($sources as $source) {
-            $rate = Rate::where('source', $source)
+        foreach ($combinations as $combo) {
+            $rate = Rate::where('source', $combo->source)
+                ->where('currency_to', $combo->currency_to)
                 ->orderBy('effective_at', 'desc')
                 ->first();
             
