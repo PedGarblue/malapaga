@@ -34,7 +34,8 @@ it('fetches the euro rate from BCV', function () {
     expect($rate)->toEqual([
         'source' => 'BCV',
         'value' => 208.28473732,
-        'currency' => 'VES',
+        'currency_from' => 'VES',
+        'currency_to' => 'EUR',
         'effective_at' => Carbon::parse('2024-01-01 12:34:56', 'UTC'),
     ]);
 

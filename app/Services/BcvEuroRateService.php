@@ -27,7 +27,8 @@ class BcvEuroRateService
         return [
             'source' => 'BCV',
             'value' => $value,
-            'currency' => 'VES',
+            'currency_from' => 'VES',
+            'currency_to' => 'EUR',
             'effective_at' => now()->utc(),
         ];
     }

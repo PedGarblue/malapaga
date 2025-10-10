@@ -59,7 +59,8 @@ class DolarRateService
         return [
             'source' => $source,
             'value' => (float) $value,
-            'currency' => 'VES',
+            'currency_from' => 'VES',
+            'currency_to' => 'USD',
             'effective_at' => $effectiveAt,
         ];
     }

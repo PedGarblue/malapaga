@@ -50,7 +50,8 @@ class StoreDolarRates extends Command
             Rate::create([
                 'source' => $rate['source'],
                 'value' => number_format($rate['value'], 4, '.', ''),
-                'currency' => $rate['currency'],
+                'currency_from' => 'VES',
+                'currency_to' => 'USD',
                 'effective_at' => $rate['effective_at'],
             ]);
 

@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id();
             $table->enum('source', ['BCV', 'Paralelo', 'Custom']);
             $table->decimal('value', 12, 4);
-            $table->string('currency', 3)->default('VES'); // or USD
+            $table->string('currency_from', 3)->default('VES');
+            $table->string('currency_to', 3);
             $table->timestamp('effective_at'); // was fetched_at
             $table->timestamps(); // created_at + updated_at
         });

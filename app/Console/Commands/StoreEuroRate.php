@@ -39,7 +39,8 @@ class StoreEuroRate extends Command
         Rate::create([
             'source' => $rate['source'],
             'value' => $rate['value'],
-            'currency' => $rate['currency'],
+            'currency_from' => 'VES',
+            'currency_to' => 'EUR',
             'effective_at' => $rate['effective_at'],
         ]);
 
