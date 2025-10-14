@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\Api\ConsumerController;
 use App\Http\Controllers\Api\EventController;
 use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\ParticipationController;
@@ -23,6 +24,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
 
     Route::apiResource('events', EventController::class);
+    Route::apiResource('consumers', ConsumerController::class);
     Route::apiResource('items', ItemController::class);
     Route::apiResource('participations', ParticipationController::class);
     Route::apiResource('rates', RateController::class)->except(['index', 'show']);
