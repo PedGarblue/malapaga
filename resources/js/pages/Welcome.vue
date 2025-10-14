@@ -68,43 +68,6 @@ onMounted(() => {
                 class="flex w-full max-w-[335px] flex-col-reverse overflow-hidden rounded-lg lg:max-w-4xl lg:flex-row">
                 <div
                     class="flex-1 rounded-br-lg rounded-bl-lg bg-white p-6 pb-12 text-[13px] leading-[20px] shadow-[inset_0px_0px_0px_1px_rgba(26,26,0,0.16)] lg:rounded-tl-lg lg:rounded-br-none lg:p-20 dark:bg-[#161615] dark:text-[#EDEDEC] dark:shadow-[inset_0px_0px_0px_1px_#fffaed2d]">
-
-                    <!-- Exchange Rates Section -->
-                    <div class="mb-6">
-                        <h2 class="mb-2 font-medium">Current Exchange Rates</h2>
-                        <div v-if="isLoading" class="text-sm text-[#706f6c] dark:text-[#A1A09A]">
-                            Loading rates...
-                        </div>
-                        <div v-else-if="error" class="text-sm text-red-600 dark:text-red-400">
-                            {{ error }}
-                        </div>
-                        <div v-else-if="latestRates.length > 0" class="space-y-2">
-                            <div v-for="rate in latestRates" :key="rate.id"
-                                class="flex items-center justify-between rounded-md border border-[#e3e3e0] bg-[#FDFDFC] p-3 text-sm dark:border-[#3E3E3A] dark:bg-[#1C1C1A]">
-                                <div>
-                                    <span class="font-medium">{{
-                                        rate.currency_from
-                                        }}</span>
-                                    →
-                                    <span class="font-medium">{{
-                                        rate.currency_to
-                                        }}</span>
-                                </div>
-                                <div class="text-right">
-                                    <div class="font-semibold">
-                                        {{ rate.value }}
-                                    </div>
-                                    <div class="text-xs text-[#706f6c] dark:text-[#A1A09A]">
-                                        {{ rate.source }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div v-else class="text-sm text-[#706f6c] dark:text-[#A1A09A]">
-                            No rates available
-                        </div>
-                    </div>
-
                     <!-- Events Section -->
                     <div class="mb-6">
                         <div class="mb-3 flex items-center justify-between">

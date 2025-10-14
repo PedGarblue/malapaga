@@ -1,16 +1,32 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, reactive } from 'vue';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import CurrencyConverter from '@/components/CurrencyConverter.vue';
+import ConsumerParticipationRow from '@/components/ConsumerParticipationRow.vue';
 import { useRates } from '@/composables/useRates';
 import { createEventLocal } from '@/repos/events';
 import { createConsumerLocal } from '@/repos/consumers';
 import { createItemLocal } from '@/repos/items';
+import { createParticipationLocal } from '@/repos/participation';
 import type { Event, Consumer, Item, Rate } from '@/types/models';
+
+interface ItemParticipation {
+    consumerId: string;
+    qty: number;
+    paidById: string;  // ID of consumer who paid for this participation
+}
+
+interface ItemWithParticipations {
+    name: string;
+    priceVes: number;
+    tempId: string;
+    participations: ItemParticipation[];
+}
 
 const props = defineProps<{
     open: boolean;
@@ -34,9 +50,14 @@ const consumers = ref<Array<{ name: string; tempId: string }>>([]);
 const newConsumerName = ref('');
 
 // Item data
-const items = ref<Array<{ name: string; priceVes: number; tempId: string }>>([]);
+const items = ref<ItemWithParticipations[]>([]);
 const newItemName = ref('');
 const newItemPrice = ref<number | null>(null);
+
+// Participation state
+const showParticipationUI = ref(false);
+const participationQuantities = reactive<Record<string, number>>({});
+const participationPaidBy = reactive<Record<string, string>>({});  // consumerId -> paidByConsumerId
 
 // Rates
 const { latestRates, loadLatestRates } = useRates();
@@ -60,6 +81,10 @@ const resetWizard = () => {
     items.value = [];
     newItemName.value = '';
     newItemPrice.value = null;
+    showParticipationUI.value = false;
+    // Clear reactive objects
+    Object.keys(participationQuantities).forEach(key => delete participationQuantities[key]);
+    Object.keys(participationPaidBy).forEach(key => delete participationPaidBy[key]);
     error.value = null;
 };
 
@@ -111,14 +136,65 @@ const proceedToItems = () => {
 // Step 3: Add Items
 const addItem = () => {
     if (newItemName.value.trim() && newItemPrice.value && newItemPrice.value > 0) {
-        items.value.push({
-            name: newItemName.value.trim(),
-            priceVes: newItemPrice.value,
-            tempId: crypto.randomUUID()
+        // Clear existing participation data
+        Object.keys(participationQuantities).forEach(key => delete participationQuantities[key]);
+        Object.keys(participationPaidBy).forEach(key => delete participationPaidBy[key]);
+
+        // Initialize quantities and paidBy for all consumers (all checked by default)
+        consumers.value.forEach(consumer => {
+            participationQuantities[consumer.tempId] = 1; // All consumers participate by default
+            participationPaidBy[consumer.tempId] = consumer.tempId; // Each pays for themselves by default
         });
-        newItemName.value = '';
-        newItemPrice.value = null;
+
+        // Show participation UI
+        showParticipationUI.value = true;
     }
+};
+
+const cancelParticipation = () => {
+    showParticipationUI.value = false;
+    // Clear reactive objects
+    Object.keys(participationQuantities).forEach(key => delete participationQuantities[key]);
+    Object.keys(participationPaidBy).forEach(key => delete participationPaidBy[key]);
+};
+
+const confirmItem = () => {
+    // Build participations array
+    const participations: ItemParticipation[] = [];
+
+    for (const consumer of consumers.value) {
+        const qty = participationQuantities[consumer.tempId] || 0;
+        if (qty > 0) {
+            participations.push({
+                consumerId: consumer.tempId,
+                qty: qty,
+                paidById: participationPaidBy[consumer.tempId] || consumer.tempId
+            });
+        }
+    }
+
+    // Validate: at least one consumer must participate
+    if (participations.length === 0) {
+        error.value = 'At least one consumer must participate with qty > 0';
+        return;
+    }
+
+    // Add item with participations
+    items.value.push({
+        name: newItemName.value.trim(),
+        priceVes: newItemPrice.value!,
+        tempId: crypto.randomUUID(),
+        participations: participations
+    });
+
+    // Reset form
+    newItemName.value = '';
+    newItemPrice.value = null;
+    showParticipationUI.value = false;
+    // Clear reactive objects
+    Object.keys(participationQuantities).forEach(key => delete participationQuantities[key]);
+    Object.keys(participationPaidBy).forEach(key => delete participationPaidBy[key]);
+    error.value = null;
 };
 
 const removeItem = (tempId: string) => {
@@ -140,14 +216,14 @@ const completeWizard = async () => {
     error.value = null;
 
     try {
-        // Create all consumers
-        const createdConsumers: Consumer[] = [];
+        // Create all consumers and map temp IDs to actual IDs
+        const consumerIdMap = new Map<string, string>();
         for (const consumer of consumers.value) {
             const created = await createConsumerLocal({ name: consumer.name });
-            createdConsumers.push(created);
+            consumerIdMap.set(consumer.tempId, created.id as string);
         }
 
-        // Create all items
+        // Create all items and their participations
         // Convert VES to USD using BCV rate
         if (!bcvUsdRate.value) {
             throw new Error('BCV USD rate not available. Please try again later.');
@@ -155,12 +231,28 @@ const completeWizard = async () => {
 
         for (const item of items.value) {
             const priceUsd = item.priceVes / bcvUsdRate.value.value;
-            await createItemLocal({
+            const createdItem = await createItemLocal({
                 event_id: createdEvent.value.id!,
                 name: item.name,
                 price_usd: priceUsd,
                 rate_id: bcvUsdRate.value.id
             });
+
+            // Create participations for this item
+            for (const participation of item.participations) {
+                const actualConsumerId = consumerIdMap.get(participation.consumerId);
+                if (!actualConsumerId) continue;
+
+                // Get the actual payer ID
+                const actualPayerId = consumerIdMap.get(participation.paidById) || actualConsumerId;
+
+                await createParticipationLocal({
+                    item_id: createdItem.id!,
+                    consumer_id: actualConsumerId,
+                    qty: participation.qty,
+                    paid_by_id: actualPayerId
+                });
+            }
         }
 
         // Emit success event and close dialog
@@ -293,15 +385,16 @@ const goBack = () => {
                     </CardHeader>
                     <CardContent class="space-y-4">
                         <!-- Add Item Form -->
-                        <div class="space-y-3">
+                        <div v-if="!showParticipationUI" class="space-y-3">
                             <div>
                                 <Label for="itemName">Item Name</Label>
                                 <Input id="itemName" v-model="newItemName" placeholder="Enter item name" />
                             </div>
                             <div>
                                 <Label for="itemPrice">Price (VES)</Label>
-                                <Input id="itemPrice" v-model.number="newItemPrice" type="number" step="0.01" min="0"
-                                    placeholder="Enter price in VES" />
+                                <Input id="itemPrice" :model-value="newItemPrice ?? undefined"
+                                    @update:model-value="(val) => newItemPrice = val ? Number(val) : null" type="number"
+                                    step="0.01" min="0" placeholder="Enter price in VES" />
                             </div>
 
                             <!-- Currency Conversion Display -->
@@ -313,22 +406,85 @@ const goBack = () => {
                             </Button>
                         </div>
 
+                        <!-- Participation Assignment UI -->
+                        <div v-if="showParticipationUI"
+                            class="space-y-4 rounded-lg border border-sidebar-border/70 bg-muted/30 p-4 dark:border-sidebar-border">
+                            <div>
+                                <h4 class="font-semibold text-sm mb-1">{{ newItemName }}</h4>
+                                <p class="text-xs text-muted-foreground">{{ newItemPrice?.toLocaleString() }} VES</p>
+                            </div>
+
+                            <div class="space-y-3">
+                                <Label class="text-sm font-medium">Participants:</Label>
+                                <div class="space-y-2">
+                                    <ConsumerParticipationRow
+                                        v-for="consumer in consumers.filter(c => (participationQuantities[c.tempId] || 0) > 0)"
+                                        :key="consumer.tempId" :consumer="consumer" :all-consumers="consumers"
+                                        :quantity="participationQuantities[consumer.tempId] || 0"
+                                        :paid-by-id="participationPaidBy[consumer.tempId] || consumer.tempId"
+                                        @update:quantity="(qty) => participationQuantities[consumer.tempId] = qty"
+                                        @update:paid-by-id="(id) => participationPaidBy[consumer.tempId] = id"
+                                        @remove="participationQuantities[consumer.tempId] = 0" />
+                                </div>
+
+                                <!-- Add removed consumers back -->
+                                <div v-if="consumers.filter(c => (participationQuantities[c.tempId] || 0) === 0).length > 0"
+                                    class="pt-2">
+                                    <Label class="text-xs text-muted-foreground mb-2 block">Add participant:</Label>
+                                    <div class="flex flex-wrap gap-2">
+                                        <Button
+                                            v-for="consumer in consumers.filter(c => (participationQuantities[c.tempId] || 0) === 0)"
+                                            :key="consumer.tempId" variant="outline" size="sm" class="h-7 text-xs"
+                                            @click="participationQuantities[consumer.tempId] = 1; participationPaidBy[consumer.tempId] = consumer.tempId">
+                                            + {{ consumer.name }}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-2">
+                                <Button variant="outline" @click="cancelParticipation" class="flex-1">
+                                    Cancel
+                                </Button>
+                                <Button @click="confirmItem" class="flex-1">
+                                    Confirm Item
+                                </Button>
+                            </div>
+                        </div>
+
                         <!-- Items List -->
                         <div v-if="items.length > 0" class="space-y-2">
                             <div class="text-sm font-medium">Items ({{ items.length }}):</div>
                             <div class="space-y-1">
                                 <div v-for="item in items" :key="item.tempId"
-                                    class="flex items-center justify-between rounded-md border border-sidebar-border/70 bg-muted/50 px-3 py-2 text-sm dark:border-sidebar-border">
-                                    <div class="flex-1">
-                                        <div class="font-medium">{{ item.name }}</div>
-                                        <div class="text-xs text-muted-foreground">
-                                            {{ item.priceVes.toLocaleString() }} VES
+                                    class="rounded-md border border-sidebar-border/70 bg-muted/50 px-3 py-2 text-sm dark:border-sidebar-border">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex-1">
+                                            <div class="font-medium">{{ item.name }}</div>
+                                            <div class="text-xs text-muted-foreground">
+                                                {{ item.priceVes.toLocaleString() }} VES
+                                            </div>
+                                        </div>
+                                        <Button variant="ghost" size="sm" @click="removeItem(item.tempId)"
+                                            class="h-6 px-2 text-xs">
+                                            Remove
+                                        </Button>
+                                    </div>
+                                    <!-- Participation Summary -->
+                                    <div
+                                        class="text-xs text-muted-foreground space-y-1 pt-2 border-t border-sidebar-border/50">
+                                        <div v-for="participation in item.participations"
+                                            :key="participation.consumerId" class="flex items-center justify-between">
+                                            <span>
+                                                {{consumers.find(c => c.tempId === participation.consumerId)?.name}}
+                                                <span class="ml-1 text-muted-foreground/70">
+                                                    (paid by: {{consumers.find(c => c.tempId ===
+                                                        participation.paidById)?.name}})
+                                                </span>
+                                            </span>
+                                            <span>qty: {{ participation.qty }}</span>
                                         </div>
                                     </div>
-                                    <Button variant="ghost" size="sm" @click="removeItem(item.tempId)"
-                                        class="h-6 px-2 text-xs">
-                                        Remove
-                                    </Button>
                                 </div>
                             </div>
                         </div>
