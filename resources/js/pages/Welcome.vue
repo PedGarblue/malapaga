@@ -1,19 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { dashboard, login, register } from '@/routes';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { useRates } from '@/composables/useRates';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import EventCreationWizard from '@/components/EventCreationWizard.vue';
-import { fetchEventsLocal } from '@/repos/events';
+import { createEventLocal, fetchEventsLocal } from '@/repos/events';
 import type { Event } from '@/types/models';
 
 const { latestRates, isLoading, error } = useRates();
 
-const showWizard = ref(false);
 const events = ref<Event[]>([]);
 const isLoadingEvents = ref(false);
+const isCreatingEvent = ref(false);
 
 const loadEvents = async () => {
     isLoadingEvents.value = true;
@@ -26,9 +25,25 @@ const loadEvents = async () => {
     }
 };
 
-const handleEventCreated = (event: Event) => {
-    // Reload events after creation
-    loadEvents();
+const createAndNavigateToEvent = async () => {
+    isCreatingEvent.value = true;
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const event = await createEventLocal({
+            title: 'New Event',
+            date: today
+        });
+        
+        // Navigate to the event page
+        router.visit(`/event/${event.id}`);
+    } catch (error) {
+        console.error('Error creating event:', error);
+        isCreatingEvent.value = false;
+    }
+};
+
+const navigateToEvent = (eventId: string | number) => {
+    router.visit(`/event/${eventId}`);
 };
 
 onMounted(() => {
@@ -72,9 +87,9 @@ onMounted(() => {
                     <div class="mb-6">
                         <div class="mb-3 flex items-center justify-between">
                             <h2 class="font-medium">My Events</h2>
-                            <Button @click="showWizard = true" size="sm"
+                            <Button @click="createAndNavigateToEvent" :disabled="isCreatingEvent" size="sm"
                                 class="h-7 rounded-sm border border-[#19140035] bg-white px-3 text-xs text-[#1b1b18] hover:border-[#1915014a] hover:bg-white dark:border-[#3E3E3A] dark:bg-[#161615] dark:text-[#EDEDEC] dark:hover:border-[#62605b] dark:hover:bg-[#161615]">
-                                Create Event
+                                {{ isCreatingEvent ? 'Creating...' : 'Create Event' }}
                             </Button>
                         </div>
 
@@ -83,7 +98,8 @@ onMounted(() => {
                         </div>
                         <div v-else-if="events.length > 0" class="space-y-2">
                             <div v-for="event in events" :key="event.id"
-                                class="rounded-md border border-[#e3e3e0] bg-[#FDFDFC] p-3 dark:border-[#3E3E3A] dark:bg-[#1C1C1A]">
+                                @click="navigateToEvent(event.id!)"
+                                class="cursor-pointer rounded-md border border-[#e3e3e0] bg-[#FDFDFC] p-3 transition-colors hover:border-[#1915014a] dark:border-[#3E3E3A] dark:bg-[#1C1C1A] dark:hover:border-[#62605b]">
                                 <div class="font-medium text-sm">{{ event.title }}</div>
                                 <div v-if="event.date" class="text-xs text-[#706f6c] dark:text-[#A1A09A]">
                                     {{ new Date(event.date).toLocaleDateString() }}
@@ -95,9 +111,9 @@ onMounted(() => {
                             <div class="text-sm text-[#706f6c] dark:text-[#A1A09A] mb-2">
                                 No events yet
                             </div>
-                            <Button @click="showWizard = true" size="sm"
+                            <Button @click="createAndNavigateToEvent" :disabled="isCreatingEvent" size="sm"
                                 class="h-7 rounded-sm border border-[#19140035] bg-white px-3 text-xs text-[#1b1b18] hover:border-[#1915014a] hover:bg-white dark:border-[#3E3E3A] dark:bg-[#161615] dark:text-[#EDEDEC] dark:hover:border-[#62605b] dark:hover:bg-[#161615]">
-                                Create Your First Event
+                                {{ isCreatingEvent ? 'Creating...' : 'Create Your First Event' }}
                             </Button>
                         </div>
                     </div>
@@ -465,8 +481,5 @@ onMounted(() => {
             </main>
         </div>
         <div class="hidden h-14.5 lg:block"></div>
-
-        <!-- Event Creation Wizard -->
-        <EventCreationWizard v-model:open="showWizard" @event-created="handleEventCreated" />
     </div>
 </template>

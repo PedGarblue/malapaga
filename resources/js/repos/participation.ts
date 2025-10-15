@@ -1,7 +1,11 @@
 import { db, withTempId } from '@/db';
 import type { Participation, Outbox } from '@/types/models';
 
-export async function createParticipationLocal(data: Omit<Participation, 'id'>) {
+export async function fetchParticipationsByItemLocal(itemId: string | number): Promise<Participation[]> {
+    return await db.participations.where('item_id').equals(itemId).toArray();
+}
+
+export async function createParticipationLocal(data: Omit<Participation, 'id'>): Promise<Participation> {
     const rec = withTempId<Participation>({ ...data, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     await db.participations.put(rec);
     await db.outbox.add({
@@ -11,6 +15,7 @@ export async function createParticipationLocal(data: Omit<Participation, 'id'>) 
         payload: rec,
         created_at: Date.now()
     } as Outbox);
+    return rec;
 }
 
 export async function updateParticipationLocal(id: string | number, patch: Partial<Participation>) {
