@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, provide, computed } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import ConsumersSection from '@/components/ConsumersSection.vue';
 import ItemsSection from '@/components/ItemsSection.vue';
 import SummarySection from '@/components/SummarySection.vue';
 import { fetchEventLocal } from '@/repos/events';
-import { fetchConsumersLocal } from '@/repos/consumers';
+import { fetchConsumersByEventLocal } from '@/repos/consumers';
 import { fetchItemsByEventLocal } from '@/repos/items';
 import { fetchParticipationsByItemLocal } from '@/repos/participation';
 import { useRates } from '@/composables/useRates';
@@ -20,7 +20,6 @@ const props = defineProps<{
 
 // State
 const event = ref<Event | null>(null);
-const allConsumers = ref<Consumer[]>([]);
 const eventConsumers = ref<Consumer[]>([]);
 const items = ref<Item[]>([]);
 const participationsByItem = ref<Map<string | number, Participation[]>>(new Map());
@@ -29,6 +28,22 @@ const error = ref<string | null>(null);
 
 // Rates
 const { latestRates, loadLatestRates } = useRates();
+
+// Computed for BCV USD rate
+const bcvUsdRate = computed(() => {
+    return latestRates.value.find(r => r.source === 'BCV' && r.currency_to === 'USD');
+});
+
+// Provide shared data to child components
+provide('eventConsumers', eventConsumers);
+provide('rates', latestRates);
+provide('bcvUsdRate', bcvUsdRate);
+provide('participationsByItem', participationsByItem);
+
+// Provide update function for participations
+provide('updateParticipationsByItem', (updatedMap: Map<string | number, Participation[]>) => {
+    participationsByItem.value = updatedMap;
+});
 
 // Load data
 const loadEventData = async () => {
@@ -48,20 +63,15 @@ const loadEventData = async () => {
         const loadedItems = await fetchItemsByEventLocal(props.eventId);
         items.value = loadedItems;
 
-        // Load all consumers
-        const loadedConsumers = await fetchConsumersLocal();
-        allConsumers.value = loadedConsumers;
+        // Load consumers for this event
+        const loadedConsumers = await fetchConsumersByEventLocal(props.eventId);
+        eventConsumers.value = loadedConsumers;
 
-        // Load participations for each item and determine event consumers
-        const consumerIds = new Set<string | number>();
+        // Load participations for each item
         for (const item of loadedItems) {
             const participations = await fetchParticipationsByItemLocal(item.id!);
             participationsByItem.value.set(item.id!, participations);
-            participations.forEach(p => consumerIds.add(p.consumer_id));
         }
-
-        // Filter consumers that are part of this event
-        eventConsumers.value = loadedConsumers.filter(c => consumerIds.has(c.id!));
 
         // Load rates
         await loadLatestRates();
@@ -80,22 +90,6 @@ const handleEventUpdate = (updatedEvent: Event) => {
 
 const handleConsumersUpdate = (updatedConsumers: Consumer[]) => {
     eventConsumers.value = updatedConsumers;
-    // Also update allConsumers to keep them in sync
-    const consumerIds = new Set(updatedConsumers.map(c => c.id));
-    const existingIds = new Set(allConsumers.value.map(c => c.id));
-
-    // Add new consumers to allConsumers
-    updatedConsumers.forEach(consumer => {
-        if (!existingIds.has(consumer.id)) {
-            allConsumers.value.push(consumer);
-        }
-    });
-
-    // Update existing consumers in allConsumers
-    allConsumers.value = allConsumers.value.map(consumer => {
-        const updated = updatedConsumers.find(c => c.id === consumer.id);
-        return updated || consumer;
-    });
 };
 
 const handleItemsUpdate = (updatedItems: Item[]) => {
@@ -104,13 +98,6 @@ const handleItemsUpdate = (updatedItems: Item[]) => {
 
 const handleParticipationsUpdate = (updatedMap: Map<string | number, Participation[]>) => {
     participationsByItem.value = updatedMap;
-
-    // Update event consumers based on participations
-    const consumerIds = new Set<string | number>();
-    updatedMap.forEach(participations => {
-        participations.forEach(p => consumerIds.add(p.consumer_id));
-    });
-    eventConsumers.value = allConsumers.value.filter(c => consumerIds.has(c.id!));
 };
 
 onMounted(() => {
@@ -145,10 +132,10 @@ onMounted(() => {
         <div v-else class="mx-auto max-w-3xl p-4 pb-20 space-y-4">
             <EventInfoSection v-if="event" :event="event" @update:event="handleEventUpdate" />
 
-            <ConsumersSection :consumers="eventConsumers" @update:consumers="handleConsumersUpdate" />
+            <ConsumersSection :consumers="eventConsumers" :event-id="eventId"
+                @update:consumers="handleConsumersUpdate" />
 
-            <ItemsSection :event-id="eventId" :items="items" :consumers="eventConsumers"
-                :participations-by-item="participationsByItem" :rates="latestRates" @update:items="handleItemsUpdate"
+            <ItemsSection :event-id="eventId" :items="items" @update:items="handleItemsUpdate"
                 @update:participations-by-item="handleParticipationsUpdate" />
 
             <SummarySection :consumers="eventConsumers" :items="items" :rates="latestRates"

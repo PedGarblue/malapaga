@@ -35,7 +35,7 @@ class EventController extends Controller
      */
     public function show(string $id)
     {
-        return Event::with(['items.participations'])->findOrFail($id);
+        return Event::with(['items.participations', 'consumers'])->findOrFail($id);
     }
 
     /**

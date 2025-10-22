@@ -9,6 +9,10 @@ export async function fetchConsumerLocal(id: string | number): Promise<Consumer 
     return await db.consumers.get(id);
 }
 
+export async function fetchConsumersByEventLocal(eventId: string | number): Promise<Consumer[]> {
+    return await db.consumers.where('event_id').equals(eventId).toArray();
+}
+
 export async function createConsumerLocal(data: Omit<Consumer, 'id'>): Promise<Consumer> {
     const rec = withTempId<Consumer>({
         ...data,

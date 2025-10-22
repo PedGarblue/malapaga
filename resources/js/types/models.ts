@@ -23,6 +23,7 @@ export interface Event {
 export interface Consumer {
     id?: ID;
     name: string;
+    event_id: ID;
     user_id?: number | null;
     created_at?: string;
     updated_at?: string;

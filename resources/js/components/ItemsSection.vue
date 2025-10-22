@@ -1,19 +1,17 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, inject, type Ref, type ComputedRef } from 'vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import CurrencyConverter from '@/components/CurrencyConverter.vue';
 import ItemCard from '@/components/ItemCard.vue';
 import { createItemLocal } from '@/repos/items';
+import { createParticipationLocal } from '@/repos/participation';
 import type { Item, Consumer, Participation, Rate } from '@/types/models';
 
 const props = defineProps<{
     eventId: string;
     items: Item[];
-    consumers: Consumer[];
-    participationsByItem: Map<string | number, Participation[]>;
-    rates: Rate[];
 }>();
 
 const emit = defineEmits<{
@@ -21,14 +19,16 @@ const emit = defineEmits<{
     'update:participationsByItem': [participationsByItem: Map<string | number, Participation[]>];
 }>();
 
+// Inject shared data
+const rates = inject<Ref<Rate[]>>('rates')!;
+const bcvUsdRate = inject<ComputedRef<Rate | undefined>>('bcvUsdRate')!;
+const participationsByItem = inject<Ref<Map<string | number, Participation[]>>>('participationsByItem')!;
+const eventConsumers = inject<Ref<Consumer[]>>('eventConsumers')!;
+
 const newItemName = ref('');
 const newItemPriceVes = ref<number | null>(null);
 
 const totalItems = computed(() => props.items.length);
-
-const bcvUsdRate = computed(() => {
-    return props.rates.find(r => r.source === 'BCV' && r.currency_to === 'USD');
-});
 
 const addItem = async () => {
     if (!newItemName.value.trim() || !newItemPriceVes.value || !bcvUsdRate.value) return;
@@ -43,8 +43,18 @@ const addItem = async () => {
 
     emit('update:items', [...props.items, item]);
 
-    const newMap = new Map(props.participationsByItem);
-    newMap.set(item.id!, []);
+    const newMap = new Map(participationsByItem.value);
+
+    for (const consumer of eventConsumers.value) {
+        const participation = await createParticipationLocal({
+            item_id: item.id!,
+            consumer_id: consumer.id!,
+            qty: 1,
+            paid_by_id: consumer.id!
+        });
+        newMap.set(item.id!, [...(newMap.get(item.id!) || []), participation]);
+    }
+
     emit('update:participationsByItem', newMap);
 
     newItemName.value = '';
@@ -57,17 +67,11 @@ const updateItem = (index: number, updatedItem: Item) => {
     emit('update:items', updated);
 };
 
-const updateParticipations = (itemId: string | number, participations: Participation[]) => {
-    const newMap = new Map(props.participationsByItem);
-    newMap.set(itemId, participations);
-    emit('update:participationsByItem', newMap);
-};
-
 const removeItem = (index: number, itemId: string | number) => {
     const updated = props.items.filter((_, i) => i !== index);
     emit('update:items', updated);
 
-    const newMap = new Map(props.participationsByItem);
+    const newMap = new Map(participationsByItem.value);
     newMap.delete(itemId);
     emit('update:participationsByItem', newMap);
 };
@@ -93,11 +97,8 @@ const removeItem = (index: number, itemId: string | number) => {
 
             <!-- Item List -->
             <div v-if="items.length > 0" class="space-y-2">
-                <ItemCard v-for="(item, index) in items" :key="item.id" :item="item" :consumers="consumers"
-                    :participations="participationsByItem.get(item.id!) || []" :bcv-usd-rate="bcvUsdRate"
-                    @update:item="updateItem(index, $event)"
-                    @update:participations="updateParticipations(item.id!, $event)"
-                    @delete="removeItem(index, item.id!)" />
+                <ItemCard v-for="(item, index) in items" :key="item.id" :item="item"
+                    @update:item="updateItem(index, $event)" @delete="removeItem(index, item.id!)" />
             </div>
 
             <!-- Empty State -->

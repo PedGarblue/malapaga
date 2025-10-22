@@ -9,6 +9,7 @@ import type { Consumer } from '@/types/models';
 
 const props = defineProps<{
     consumers: Consumer[];
+    eventId: string | number;
 }>();
 
 const emit = defineEmits<{
@@ -21,7 +22,10 @@ const totalConsumers = computed(() => props.consumers.length);
 
 const addConsumer = async () => {
     if (newConsumerName.value.trim()) {
-        const consumer = await createConsumerLocal({ name: newConsumerName.value.trim() });
+        const consumer = await createConsumerLocal({
+            name: newConsumerName.value.trim(),
+            event_id: props.eventId
+        });
         emit('update:consumers', [...props.consumers, consumer]);
         newConsumerName.value = '';
     }

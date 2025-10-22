@@ -23,6 +23,7 @@ class ConsumerController extends Controller
     {
         $consumer = Consumer::create($request->validate([
             'name' => 'required|string|max:255',
+            'event_id' => 'required|exists:events,id',
         ]) + ['user_id' => $request->user()->id]);
 
         return $consumer;

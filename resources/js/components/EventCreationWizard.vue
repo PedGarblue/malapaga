@@ -219,7 +219,10 @@ const completeWizard = async () => {
         // Create all consumers and map temp IDs to actual IDs
         const consumerIdMap = new Map<string, string>();
         for (const consumer of consumers.value) {
-            const created = await createConsumerLocal({ name: consumer.name });
+            const created = await createConsumerLocal({
+                name: consumer.name,
+                event_id: createdEvent.value.id!
+            });
             consumerIdMap.set(consumer.tempId, created.id as string);
         }
 

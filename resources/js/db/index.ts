@@ -14,7 +14,7 @@ export class AppDB extends Dexie {
     constructor() {
         super('malapaga-db');
 
-        // Version your schema — you can migrate later safely
+        // Version 1: Initial schema
         this.version(1).stores({
             events: 'id, title, date, created_at, updated_at',
             consumers: 'id, name, created_at, updated_at',
@@ -23,6 +23,11 @@ export class AppDB extends Dexie {
             settlements: 'id, event_id, payer_id, payee_id, paid, created_at, updated_at',
             rates: 'id, source, effective_at, created_at, updated_at',
             outbox: 'id, table, action, created_at'
+        });
+
+        // Version 2: Add event_id index to consumers
+        this.version(2).stores({
+            consumers: 'id, event_id, name, created_at, updated_at'
         });
     }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, inject, type Ref, type ComputedRef } from 'vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-vue-next';
@@ -9,16 +9,21 @@ import type { Item, Consumer, Participation, Rate } from '@/types/models';
 
 const props = defineProps<{
     item: Item;
-    consumers: Consumer[];
-    participations: Participation[];
-    bcvUsdRate: Rate | undefined;
 }>();
 
 const emit = defineEmits<{
     'update:item': [item: Item];
-    'update:participations': [participations: Participation[]];
     'delete': [];
 }>();
+
+// Inject shared data
+const consumers = inject<Ref<Consumer[]>>('eventConsumers')!;
+const bcvUsdRate = inject<ComputedRef<Rate | undefined>>('bcvUsdRate')!;
+const participationsByItem = inject<Ref<Map<string | number, Participation[]>>>('participationsByItem')!;
+const updateParticipationsByItem = inject<(map: Map<string | number, Participation[]>) => void>('updateParticipationsByItem')!;
+
+// Local computed for this item's participations
+const participations = computed(() => participationsByItem.value.get(props.item.id!) || []);
 
 const isExpanded = ref(false);
 const isEditingName = ref(false);
@@ -30,9 +35,16 @@ const participationQty = ref<Record<string, number>>({});
 const participationPaidBy = ref<Record<string, string>>({});
 
 const vesPrice = computed(() => {
-    if (!props.bcvUsdRate) return 'N/A';
-    return (props.item.price_usd * props.bcvUsdRate.value).toFixed(2);
+    if (!bcvUsdRate.value) return 'N/A';
+    return (props.item.price_usd * bcvUsdRate.value.value).toFixed(2);
 });
+
+// Helper to update participations
+const updateParticipations = (updated: Participation[]) => {
+    const newMap = new Map(participationsByItem.value);
+    newMap.set(props.item.id!, updated);
+    updateParticipationsByItem(newMap);
+};
 
 const startEditName = () => {
     isEditingName.value = true;
@@ -49,20 +61,20 @@ const saveName = async () => {
 
 const startEditPrice = () => {
     isEditingPrice.value = true;
-    tempPrice.value = props.bcvUsdRate ? props.item.price_usd * props.bcvUsdRate.value : null;
+    tempPrice.value = bcvUsdRate.value ? props.item.price_usd * bcvUsdRate.value.value : null;
 };
 
 const savePrice = async () => {
-    if (tempPrice.value && props.bcvUsdRate) {
-        const priceUsd = tempPrice.value / props.bcvUsdRate.value;
+    if (tempPrice.value && bcvUsdRate.value) {
+        const priceUsd = tempPrice.value / bcvUsdRate.value.value;
         await updateItemLocal(props.item.id!, {
             price_usd: priceUsd,
-            rate_id: props.bcvUsdRate.id
+            rate_id: bcvUsdRate.value.id
         });
         emit('update:item', {
             ...props.item,
             price_usd: priceUsd,
-            rate_id: props.bcvUsdRate.id
+            rate_id: bcvUsdRate.value.id
         });
         isEditingPrice.value = false;
     }
@@ -71,7 +83,7 @@ const savePrice = async () => {
 const remove = async () => {
     if (confirm('Are you sure you want to remove this item?')) {
         // Delete all participations first
-        for (const p of props.participations) {
+        for (const p of participations.value) {
             await deleteParticipationLocal(p.id!);
         }
         await deleteItemLocal(props.item.id!);
@@ -84,7 +96,7 @@ const toggleExpand = () => {
 
     // Initialize participation state
     if (isExpanded.value) {
-        props.participations.forEach(p => {
+        participations.value.forEach(p => {
             const key = `${props.item.id}-${p.consumer_id}`;
             participationQty.value[key] = p.qty;
             participationPaidBy.value[key] = String(p.paid_by_id);
@@ -93,17 +105,17 @@ const toggleExpand = () => {
 };
 
 const isConsumerInItem = (consumerId: string | number): boolean => {
-    return props.participations.some(p => p.consumer_id === consumerId);
+    return participations.value.some(p => p.consumer_id === consumerId);
 };
 
 const toggleConsumerParticipation = async (consumer: Consumer) => {
-    const existing = props.participations.find(p => p.consumer_id === consumer.id);
+    const existing = participations.value.find(p => p.consumer_id === consumer.id);
 
     if (existing) {
         // Remove participation
         await deleteParticipationLocal(existing.id!);
-        const updated = props.participations.filter(p => p.id !== existing.id);
-        emit('update:participations', updated);
+        const updated = participations.value.filter(p => p.id !== existing.id);
+        updateParticipations(updated);
 
         const key = `${props.item.id}-${consumer.id}`;
         delete participationQty.value[key];
@@ -116,7 +128,7 @@ const toggleConsumerParticipation = async (consumer: Consumer) => {
             qty: 1,
             paid_by_id: consumer.id!
         });
-        emit('update:participations', [...props.participations, participation]);
+        updateParticipations([...participations.value, participation]);
 
         const key = `${props.item.id}-${consumer.id}`;
         participationQty.value[key] = 1;
@@ -125,14 +137,14 @@ const toggleConsumerParticipation = async (consumer: Consumer) => {
 };
 
 const updateQty = async (consumerId: string | number, qty: number) => {
-    const participation = props.participations.find(p => p.consumer_id === consumerId);
+    const participation = participations.value.find(p => p.consumer_id === consumerId);
 
     if (participation && qty > 0) {
         await updateParticipationLocal(participation.id!, { qty });
-        const updated = props.participations.map(p =>
+        const updated = participations.value.map(p =>
             p.id === participation.id ? { ...p, qty } : p
         );
-        emit('update:participations', updated);
+        updateParticipations(updated);
 
         const key = `${props.item.id}-${consumerId}`;
         participationQty.value[key] = qty;
@@ -140,14 +152,14 @@ const updateQty = async (consumerId: string | number, qty: number) => {
 };
 
 const updatePayer = async (consumerId: string | number, paidById: string | number) => {
-    const participation = props.participations.find(p => p.consumer_id === consumerId);
+    const participation = participations.value.find(p => p.consumer_id === consumerId);
 
     if (participation) {
         await updateParticipationLocal(participation.id!, { paid_by_id: paidById });
-        const updated = props.participations.map(p =>
+        const updated = participations.value.map(p =>
             p.id === participation.id ? { ...p, paid_by_id: paidById } : p
         );
-        emit('update:participations', updated);
+        updateParticipations(updated);
 
         const key = `${props.item.id}-${consumerId}`;
         participationPaidBy.value[key] = String(paidById);
@@ -155,7 +167,7 @@ const updatePayer = async (consumerId: string | number, paidById: string | numbe
 };
 
 const getConsumerName = (consumerId: string | number): string => {
-    return props.consumers.find(c => c.id === consumerId)?.name || 'Unknown';
+    return consumers.value.find(c => c.id === consumerId)?.name || 'Unknown';
 };
 </script>
 
