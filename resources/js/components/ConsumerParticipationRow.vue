@@ -9,12 +9,15 @@ interface Consumer {
     tempId: string;
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     consumer: Consumer;
     allConsumers: Consumer[];
     quantity: number;
     paidById: string;
-}>();
+    splitType?: 'shared' | 'per-unit';
+}>(), {
+    splitType: 'shared'
+});
 
 const emit = defineEmits<{
     'update:quantity': [value: number];
@@ -39,8 +42,8 @@ const handlePaidByChange = (event: Event) => {
                 {{ consumer.name }}
             </Label>
 
-            <Input :value="quantity" @input="handleQuantityChange" type="number" min="1" step="1" placeholder="Qty"
-                class="w-20 h-8" />
+            <Input v-if="splitType === 'per-unit'" :value="quantity" @input="handleQuantityChange" type="number" min="1"
+                step="1" placeholder="Qty" class="w-20 h-8" />
 
             <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive hover:text-destructive"
                 @click="emit('remove')" title="Remove participation">

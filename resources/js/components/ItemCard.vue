@@ -2,6 +2,8 @@
 import { ref, computed, inject, type Ref, type ComputedRef } from 'vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-vue-next';
 import { updateItemLocal, deleteItemLocal } from '@/repos/items';
 import { createParticipationLocal, updateParticipationLocal, deleteParticipationLocal } from '@/repos/participation';
@@ -28,6 +30,7 @@ const participations = computed(() => participationsByItem.value.get(props.item.
 const isExpanded = ref(false);
 const isEditingName = ref(false);
 const isEditingPrice = ref(false);
+const isPerUnitSplit = ref(false);
 const tempName = ref('');
 const tempPrice = ref<number | null>(null);
 
@@ -101,6 +104,8 @@ const toggleExpand = () => {
             participationQty.value[key] = p.qty;
             participationPaidBy.value[key] = String(p.paid_by_id);
         });
+        // Initialize split type state
+        isPerUnitSplit.value = (props.item.split_type || 'shared') === 'per-unit';
     }
 };
 
@@ -169,6 +174,35 @@ const updatePayer = async (consumerId: string | number, paidById: string | numbe
 const getConsumerName = (consumerId: string | number): string => {
     return consumers.value.find(c => c.id === consumerId)?.name || 'Unknown';
 };
+
+const updateSplitType = async (isPerUnit: boolean) => {
+    const newSplitType = isPerUnit ? 'per-unit' : 'shared';
+    const oldSplitType = props.item.split_type || 'shared';
+
+    // If switching from per-unit to shared, reset all quantities to 1
+    if (oldSplitType === 'per-unit' && newSplitType === 'shared') {
+        const updated = await Promise.all(
+            participations.value.map(async (p) => {
+                if (p.qty !== 1) {
+                    await updateParticipationLocal(p.id!, { qty: 1 });
+                    return { ...p, qty: 1 };
+                }
+                return p;
+            })
+        );
+        updateParticipations(updated);
+
+        // Reset local state
+        participations.value.forEach(p => {
+            const key = `${props.item.id}-${p.consumer_id}`;
+            participationQty.value[key] = 1;
+        });
+    }
+
+    await updateItemLocal(props.item.id!, { split_type: newSplitType });
+    emit('update:item', { ...props.item, split_type: newSplitType });
+    isPerUnitSplit.value = isPerUnit;
+};
 </script>
 
 <template>
@@ -202,11 +236,20 @@ const getConsumerName = (consumerId: string | number): string => {
                         </div>
                     </div>
 
+                    <!-- Split Type Badge -->
+                    <div class="text-xs">
+                        <span
+                            class="inline-block rounded-full bg-[#f3f3f1] px-2 py-0.5 text-[#1b1b18] dark:bg-[#2C2C2A] dark:text-[#EDEDEC]">
+                            {{ (item.split_type || 'shared') === 'shared' ? 'Shared' : 'Per-Unit' }}
+                        </span>
+                    </div>
+
                     <!-- Participation chips -->
                     <div v-if="participations.length" class="flex flex-wrap gap-1">
                         <span v-for="p in participations" :key="p.id"
                             class="inline-block rounded-full bg-[#f3f3f1] px-2 py-0.5 text-xs text-[#1b1b18] dark:bg-[#2C2C2A] dark:text-[#EDEDEC]">
-                            {{ getConsumerName(p.consumer_id) }} ({{ p.qty }})
+                            {{ getConsumerName(p.consumer_id) }}{{ (item.split_type || 'shared') === 'per-unit' ? `
+                            (${p.qty})` : '' }}
                         </span>
                     </div>
                 </div>
@@ -226,6 +269,24 @@ const getConsumerName = (consumerId: string | number): string => {
         <!-- Participation Controls (Expanded) -->
         <div v-if="isExpanded"
             class="border-t border-[#e3e3e0] bg-[#FDFDFC] p-3 dark:border-[#3E3E3A] dark:bg-[#1C1C1A]">
+            <!-- Split Type Toggle -->
+            <div class="flex items-center justify-between mb-3 pb-3 border-b border-[#e3e3e0] dark:border-[#3E3E3A]">
+                <div class="space-y-0.5">
+                    <Label class="text-xs font-medium">Split Type</Label>
+                    <div class="text-xs text-[#706f6c] dark:text-[#A1A09A]">
+                        {{ (item.split_type || 'shared') === 'shared' ? 'Shared equally' : 'Per-unit split' }}
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs"
+                        :class="!isPerUnitSplit ? 'font-medium' : 'text-[#706f6c] dark:text-[#A1A09A]'">Shared</span>
+                    <Switch :model-value="isPerUnitSplit"
+                        @update:model-value="(val: boolean) => updateSplitType(val)" />
+                    <span class="text-xs"
+                        :class="isPerUnitSplit ? 'font-medium' : 'text-[#706f6c] dark:text-[#A1A09A]'">Per-Unit</span>
+                </div>
+            </div>
+
             <div class="text-xs font-medium mb-2 text-[#706f6c] dark:text-[#A1A09A]">
                 Assign Consumers
             </div>
@@ -242,12 +303,13 @@ const getConsumerName = (consumerId: string | number): string => {
 
                     <!-- Participation details (if checked) -->
                     <div v-if="isConsumerInItem(consumer.id!)" class="ml-6 flex gap-2">
-                        <div class="flex-1">
+                        <!-- Only show quantity input for per-unit split -->
+                        <div v-if="(item.split_type || 'shared') === 'per-unit'" class="flex-1">
                             <Input :model-value="participationQty[`${item.id}-${consumer.id}`] || 1"
                                 @update:model-value="updateQty(consumer.id!, Number($event))" type="number" min="1"
                                 placeholder="Qty" class="text-xs" />
                         </div>
-                        <div class="flex-1">
+                        <div :class="(item.split_type || 'shared') === 'per-unit' ? 'flex-1' : 'w-full'">
                             <select :value="participationPaidBy[`${item.id}-${consumer.id}`] || consumer.id"
                                 @change="updatePayer(consumer.id!, ($event.target as HTMLSelectElement).value)"
                                 class="w-full rounded-md border border-[#e3e3e0] bg-white px-3 py-2 text-xs dark:border-[#3E3E3A] dark:bg-[#161615]">

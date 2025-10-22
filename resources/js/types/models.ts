@@ -35,6 +35,7 @@ export interface Item {
     name: string;
     price_usd: number;          // store normalized
     rate_id?: ID | null;
+    split_type?: 'shared' | 'per-unit';
     created_at?: string;
     updated_at?: string;
 }

@@ -25,7 +25,8 @@ class ItemController extends Controller
             'event_id' => 'required|exists:events,id',
             'name' => 'required|string|max:255',
             'price_usd' => 'required|numeric',
-            'rate_id' => 'required|exists:rates,id'
+            'rate_id' => 'required|exists:rates,id',
+            'split_type' => 'nullable|in:shared,per-unit'
         ]));
         return $item;
     }
@@ -47,7 +48,8 @@ class ItemController extends Controller
         $item->update($request->validate([
             'name' => 'required|string|max:255',
             'price_usd' => 'required|numeric',
-            'rate_id' => 'required|exists:rates,id'
+            'rate_id' => 'required|exists:rates,id',
+            'split_type' => 'nullable|in:shared,per-unit'
         ]));
         return $item;
     }

@@ -40,20 +40,23 @@ const consumerTotals = computed(() => {
 
         if (participations.length === 0) return;
 
-        // Calculate total quantity for this item
-        const totalQty = participations.reduce((sum, p) => sum + p.qty, 0);
+        const splitType = item.split_type || 'shared';
 
-        if (totalQty === 0) return;
+        if (splitType === 'shared') {
+            // Shared split: divide price equally among all participants
+            const sharePerPerson = item.price_usd / participations.length;
 
-        // Calculate price per unit
-        const pricePerUnit = item.price_usd / totalQty;
-
-        // Add each consumer's share
-        participations.forEach(participation => {
-            const consumerShare = pricePerUnit * participation.qty;
-            const currentTotal = totals.get(participation.consumer_id) || 0;
-            totals.set(participation.consumer_id, currentTotal + consumerShare);
-        });
+            participations.forEach(participation => {
+                const currentTotal = totals.get(participation.paid_by_id || participation.consumer_id) || 0;
+                totals.set(participation.paid_by_id || participation.consumer_id, currentTotal + sharePerPerson);
+            });
+        } else {
+            participations.forEach(participation => {
+                const consumerShare = item.price_usd * participation.qty;
+                const currentTotal = totals.get(participation.paid_by_id || participation.consumer_id) || 0;
+                totals.set(participation.paid_by_id || participation.consumer_id, currentTotal + consumerShare);
+            });
+        }
     });
 
     return totals;
@@ -81,14 +84,6 @@ const consumerTotalsArray = computed(() => {
         <CardContent class="space-y-4">
             <!-- Overall Totals -->
             <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                    <span class="text-[#706f6c] dark:text-[#A1A09A]">Total Consumers:</span>
-                    <span class="font-medium">{{ totalConsumers }}</span>
-                </div>
-                <div class="flex justify-between">
-                    <span class="text-[#706f6c] dark:text-[#A1A09A]">Total Items:</span>
-                    <span class="font-medium">{{ totalItems }}</span>
-                </div>
                 <div class="flex justify-between">
                     <span class="text-[#706f6c] dark:text-[#A1A09A]">Total Cost (USD):</span>
                     <span class="font-medium">${{ totalCostUsd.toFixed(2) }}</span>

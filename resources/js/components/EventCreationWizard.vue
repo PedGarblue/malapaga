@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import CurrencyConverter from '@/components/CurrencyConverter.vue';
@@ -25,6 +26,7 @@ interface ItemWithParticipations {
     name: string;
     priceVes: number;
     tempId: string;
+    split_type: 'shared' | 'per-unit';
     participations: ItemParticipation[];
 }
 
@@ -53,6 +55,7 @@ const newConsumerName = ref('');
 const items = ref<ItemWithParticipations[]>([]);
 const newItemName = ref('');
 const newItemPrice = ref<number | null>(null);
+const newItemSplitType = ref<'shared' | 'per-unit'>('shared');
 
 // Participation state
 const showParticipationUI = ref(false);
@@ -81,6 +84,7 @@ const resetWizard = () => {
     items.value = [];
     newItemName.value = '';
     newItemPrice.value = null;
+    newItemSplitType.value = 'shared';
     showParticipationUI.value = false;
     // Clear reactive objects
     Object.keys(participationQuantities).forEach(key => delete participationQuantities[key]);
@@ -184,12 +188,14 @@ const confirmItem = () => {
         name: newItemName.value.trim(),
         priceVes: newItemPrice.value!,
         tempId: crypto.randomUUID(),
+        split_type: newItemSplitType.value,
         participations: participations
     });
 
     // Reset form
     newItemName.value = '';
     newItemPrice.value = null;
+    newItemSplitType.value = 'shared';
     showParticipationUI.value = false;
     // Clear reactive objects
     Object.keys(participationQuantities).forEach(key => delete participationQuantities[key]);
@@ -238,7 +244,8 @@ const completeWizard = async () => {
                 event_id: createdEvent.value.id!,
                 name: item.name,
                 price_usd: priceUsd,
-                rate_id: bcvUsdRate.value.id
+                rate_id: bcvUsdRate.value.id,
+                split_type: item.split_type
             });
 
             // Create participations for this item
@@ -403,6 +410,25 @@ const goBack = () => {
                             <!-- Currency Conversion Display -->
                             <CurrencyConverter :ves-amount="newItemPrice || 0" :rates="latestRates" />
 
+                            <!-- Split Type Toggle -->
+                            <div
+                                class="flex items-center justify-between rounded-md border border-[#e3e3e0] bg-[#FDFDFC] p-3 dark:border-[#3E3E3A] dark:bg-[#1C1C1A]">
+                                <div class="space-y-0.5">
+                                    <Label class="text-sm font-medium">Split Type</Label>
+                                    <div class="text-xs text-[#706f6c] dark:text-[#A1A09A]">
+                                        {{ newItemSplitType === 'shared' ? 'Shared equally' : 'Per-unit split' }}
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs"
+                                        :class="newItemSplitType === 'shared' ? 'font-medium' : 'text-[#706f6c] dark:text-[#A1A09A]'">Shared</span>
+                                    <Switch :checked="newItemSplitType === 'per-unit'"
+                                        @update:checked="(val: boolean) => newItemSplitType = val ? 'per-unit' : 'shared'" />
+                                    <span class="text-xs"
+                                        :class="newItemSplitType === 'per-unit' ? 'font-medium' : 'text-[#706f6c] dark:text-[#A1A09A]'">Per-Unit</span>
+                                </div>
+                            </div>
+
                             <Button @click="addItem"
                                 :disabled="!newItemName.trim() || !newItemPrice || newItemPrice <= 0" class="w-full">
                                 Add Item
@@ -425,6 +451,7 @@ const goBack = () => {
                                         :key="consumer.tempId" :consumer="consumer" :all-consumers="consumers"
                                         :quantity="participationQuantities[consumer.tempId] || 0"
                                         :paid-by-id="participationPaidBy[consumer.tempId] || consumer.tempId"
+                                        :split-type="newItemSplitType"
                                         @update:quantity="(qty) => participationQuantities[consumer.tempId] = qty"
                                         @update:paid-by-id="(id) => participationPaidBy[consumer.tempId] = id"
                                         @remove="participationQuantities[consumer.tempId] = 0" />

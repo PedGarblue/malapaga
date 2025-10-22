@@ -29,6 +29,11 @@ export class AppDB extends Dexie {
         this.version(2).stores({
             consumers: 'id, event_id, name, created_at, updated_at'
         });
+
+        // Version 3: Add split_type to items (no index changes needed)
+        this.version(3).stores({
+            items: 'id, event_id, rate_id, created_at, updated_at'
+        });
     }
 }
 

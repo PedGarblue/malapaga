@@ -10,7 +10,7 @@ use App\Models\Participation;
 
 class Item extends Model
 {
-    protected $fillable = ['event_id','name','price_usd','rate_id'];
+    protected $fillable = ['event_id','name','price_usd','rate_id','split_type'];
 
     public function event() { return $this->belongsTo(Event::class); }
     public function rate() { return $this->belongsTo(Rate::class); }
