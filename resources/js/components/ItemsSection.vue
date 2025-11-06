@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import CurrencyConverter from '@/components/CurrencyConverter.vue';
+import CurrencyConverterUSD from '@/components/CurrencyConverterUSD.vue';
+import CurrencyConverterEUR from '@/components/CurrencyConverterEUR.vue';
 import ItemCard from '@/components/ItemCard.vue';
 import { createItemLocal } from '@/repos/items';
 import { createParticipationLocal } from '@/repos/participation';
@@ -29,22 +31,53 @@ const eventConsumers = inject<Ref<Consumer[]>>('eventConsumers')!;
 
 const newItemName = ref('');
 const newItemPriceVes = ref<number | null>(null);
+const newItemPriceUsd = ref<number | null>(null);
+const newItemPriceEur = ref<number | null>(null);
+const newItemCurrency = ref<'VES' | 'USD' | 'EUR'>('VES');
 const newItemSplitType = ref<'shared' | 'per-unit'>('shared');
 const newIsPerUnit = ref(false);
 
 const totalItems = computed(() => props.items.length);
 
+const bcvEurRate = computed(() => {
+    return rates.value.find(r => r.source === 'BCV' && r.currency_to === 'EUR');
+});
+
 const addItem = async () => {
-    if (!newItemName.value.trim() || !newItemPriceVes.value || !bcvUsdRate.value) return;
+    const hasValidPrice =
+        (newItemCurrency.value === 'VES' && newItemPriceVes.value !== null) ||
+        (newItemCurrency.value === 'USD' && newItemPriceUsd.value !== null) ||
+        (newItemCurrency.value === 'EUR' && newItemPriceEur.value !== null);
+
+    if (!newItemName.value.trim() || !hasValidPrice) return;
+
+    // If VES is selected, we need the BCV rate for conversion
+    if (newItemCurrency.value === 'VES' && !bcvUsdRate.value) return;
+
+    // If EUR is selected, we need the EUR rate for conversion
+    if (newItemCurrency.value === 'EUR' && !bcvEurRate.value) return;
 
     newItemSplitType.value = newIsPerUnit.value ? 'per-unit' : 'shared';
 
-    const priceUsd = newItemPriceVes.value / bcvUsdRate.value.value;
+    // Calculate USD price based on selected currency
+    let priceUsd: number;
+    let rateId: string | number | undefined = undefined;
+
+    if (newItemCurrency.value === 'VES' && bcvUsdRate.value) {
+        priceUsd = newItemPriceVes.value! / bcvUsdRate.value.value;
+        rateId = bcvUsdRate.value.id;
+    } else if (newItemCurrency.value === 'EUR' && bcvEurRate.value && bcvUsdRate.value) {
+        priceUsd = (newItemPriceEur.value! * bcvEurRate.value.value) / bcvUsdRate.value.value;
+        rateId = bcvEurRate.value.id;
+    } else {
+        priceUsd = newItemPriceUsd.value!;
+    }
+
     const item = await createItemLocal({
         event_id: props.eventId,
         name: newItemName.value.trim(),
         price_usd: priceUsd,
-        rate_id: bcvUsdRate.value.id,
+        rate_id: rateId,
         split_type: newItemSplitType.value
     });
 
@@ -66,6 +99,8 @@ const addItem = async () => {
 
     newItemName.value = '';
     newItemPriceVes.value = null;
+    newItemPriceUsd.value = null;
+    newItemPriceEur.value = null;
     newItemSplitType.value = 'shared';
 };
 
@@ -95,10 +130,50 @@ const removeItem = (index: number, itemId: string | number) => {
             <div
                 class="space-y-3 rounded-md border border-[#e3e3e0] bg-[#FDFDFC] p-3 dark:border-[#3E3E3A] dark:bg-[#1C1C1A]">
                 <Input v-model="newItemName" placeholder="Item name" class="w-full" />
-                <Input :model-value="newItemPriceVes ?? undefined"
+
+                <!-- Currency Selector -->
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" value="VES" v-model="newItemCurrency"
+                            class="h-4 w-4 border-[#e3e3e0] dark:border-[#3E3E3A]" />
+                        <span class="text-sm">VES</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" value="USD" v-model="newItemCurrency"
+                            class="h-4 w-4 border-[#e3e3e0] dark:border-[#3E3E3A]" />
+                        <span class="text-sm">USD</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" value="EUR" v-model="newItemCurrency"
+                            class="h-4 w-4 border-[#e3e3e0] dark:border-[#3E3E3A]" />
+                        <span class="text-sm">EUR</span>
+                    </label>
+                </div>
+
+                <!-- Price Input (VES) -->
+                <Input v-if="newItemCurrency === 'VES'" :model-value="newItemPriceVes ?? undefined"
                     @update:model-value="(val) => newItemPriceVes = val ? Number(val) : null" type="number" step="0.01"
                     placeholder="Price in VES" class="w-full" />
-                <CurrencyConverter v-if="newItemPriceVes" :ves-amount="newItemPriceVes ?? 0" :rates="rates" />
+
+                <!-- Price Input (USD) -->
+                <Input v-else-if="newItemCurrency === 'USD'" :model-value="newItemPriceUsd ?? undefined"
+                    @update:model-value="(val) => newItemPriceUsd = val ? Number(val) : null" type="number" step="0.01"
+                    placeholder="Price in USD" class="w-full" />
+
+                <!-- Price Input (EUR) -->
+                <Input v-else :model-value="newItemPriceEur ?? undefined"
+                    @update:model-value="(val) => newItemPriceEur = val ? Number(val) : null" type="number" step="0.01"
+                    placeholder="Price in EUR" class="w-full" />
+
+                <!-- Currency Converters -->
+                <CurrencyConverter v-if="newItemCurrency === 'VES' && newItemPriceVes"
+                    :ves-amount="newItemPriceVes ?? 0" :rates="rates" />
+
+                <CurrencyConverterUSD v-if="newItemCurrency === 'USD' && newItemPriceUsd"
+                    :usd-amount="newItemPriceUsd ?? 0" :rates="rates" />
+
+                <CurrencyConverterEUR v-if="newItemCurrency === 'EUR' && newItemPriceEur"
+                    :eur-amount="newItemPriceEur ?? 0" :rates="rates" />
 
                 <!-- Split Type Toggle -->
                 <div class="flex items-center justify-between">
@@ -118,7 +193,10 @@ const removeItem = (index: number, itemId: string | number) => {
                     </div>
                 </div>
 
-                <Button @click="addItem" :disabled="!newItemName || !newItemPriceVes" class="w-full">
+                <Button @click="addItem" :disabled="!newItemName ||
+                    (newItemCurrency === 'VES' && !newItemPriceVes) ||
+                    (newItemCurrency === 'USD' && !newItemPriceUsd) ||
+                    (newItemCurrency === 'EUR' && !newItemPriceEur)" class="w-full">
                     Add Item
                 </Button>
             </div>

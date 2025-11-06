@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, inject, type Ref, type ComputedRef } from 'vue';
+import { ref, computed, inject, watch, type Ref, type ComputedRef } from 'vue';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -33,13 +33,28 @@ const isEditingPrice = ref(false);
 const isPerUnitSplit = ref(false);
 const tempName = ref('');
 const tempPrice = ref<number | null>(null);
+const editCurrency = ref<'VES' | 'USD' | 'EUR'>('VES');
 
 const participationQty = ref<Record<string, number>>({});
 const participationPaidBy = ref<Record<string, string>>({});
 
+const rates = inject<Ref<Rate[]>>('rates')!;
+
 const vesPrice = computed(() => {
     if (!bcvUsdRate.value) return 'N/A';
     return (props.item.price_usd * bcvUsdRate.value.value).toFixed(2);
+});
+
+const bcvEurRate = computed(() => {
+    return rates.value.find(r => r.source === 'BCV' && r.currency_to === 'EUR');
+});
+
+const itemPriceEur = computed(() => {
+    if (!bcvEurRate.value) return 'N/A';
+
+    const usdxeur = bcvUsdRate.value!.value / bcvEurRate.value.value;
+
+    return (props.item.price_usd * usdxeur).toFixed(2);
 });
 
 // Helper to update participations
@@ -64,23 +79,43 @@ const saveName = async () => {
 
 const startEditPrice = () => {
     isEditingPrice.value = true;
-    tempPrice.value = bcvUsdRate.value ? props.item.price_usd * bcvUsdRate.value.value : null;
+    // Default to VES editing with current VES price, or USD if rate not available
+    if (bcvUsdRate.value) {
+        editCurrency.value = 'VES';
+        tempPrice.value = Number((props.item.price_usd * bcvUsdRate.value.value).toFixed(2));
+    } else {
+        editCurrency.value = 'USD';
+        tempPrice.value = props.item.price_usd;
+    }
 };
 
 const savePrice = async () => {
-    if (tempPrice.value && bcvUsdRate.value) {
-        const priceUsd = tempPrice.value / bcvUsdRate.value.value;
-        await updateItemLocal(props.item.id!, {
-            price_usd: priceUsd,
-            rate_id: bcvUsdRate.value.id
-        });
-        emit('update:item', {
-            ...props.item,
-            price_usd: priceUsd,
-            rate_id: bcvUsdRate.value.id
-        });
-        isEditingPrice.value = false;
+    if (!tempPrice.value) return;
+
+    let priceUsd: number;
+    let rateId: string | number | undefined = undefined;
+
+    if (editCurrency.value === 'VES' && bcvUsdRate.value) {
+        priceUsd = tempPrice.value / bcvUsdRate.value.value;
+        rateId = bcvUsdRate.value.id;
+    } else if (editCurrency.value === 'EUR' && bcvEurRate.value && bcvUsdRate.value) {
+        // Convert EUR to USD: EUR / EUR_RATE * USD_RATE
+        priceUsd = (tempPrice.value * bcvEurRate.value.value) / bcvUsdRate.value.value;
+        rateId = bcvEurRate.value.id;
+    } else {
+        priceUsd = tempPrice.value;
     }
+
+    await updateItemLocal(props.item.id!, {
+        price_usd: priceUsd,
+        rate_id: rateId
+    });
+    emit('update:item', {
+        ...props.item,
+        price_usd: priceUsd,
+        rate_id: rateId
+    });
+    isEditingPrice.value = false;
 };
 
 const remove = async () => {
@@ -175,6 +210,34 @@ const getConsumerName = (consumerId: string | number): string => {
     return consumers.value.find(c => c.id === consumerId)?.name || 'Unknown';
 };
 
+// Watch for currency changes during price editing to convert the displayed value
+watch(editCurrency, (newCurrency, oldCurrency) => {
+    if (!isEditingPrice.value || !tempPrice.value) return;
+
+    // Convert from old currency to new currency
+    if (oldCurrency === 'VES' && newCurrency === 'USD' && bcvUsdRate.value) {
+        // Convert VES to USD
+        tempPrice.value = tempPrice.value / bcvUsdRate.value.value;
+    } else if (oldCurrency === 'USD' && newCurrency === 'VES' && bcvUsdRate.value) {
+        // Convert USD to VES
+        tempPrice.value = tempPrice.value * bcvUsdRate.value.value;
+    } else if (oldCurrency === 'VES' && newCurrency === 'EUR' && bcvUsdRate.value && bcvEurRate.value) {
+        // Convert VES to EUR (VES -> USD -> EUR)
+        const usdAmount = tempPrice.value / bcvUsdRate.value.value;
+        tempPrice.value = usdAmount / bcvUsdRate.value.value * bcvEurRate.value.value;
+    } else if (oldCurrency === 'EUR' && newCurrency === 'VES' && bcvUsdRate.value && bcvEurRate.value) {
+        // Convert EUR to VES (EUR -> USD -> VES)
+        const usdAmount = tempPrice.value / bcvEurRate.value.value * bcvUsdRate.value.value;
+        tempPrice.value = usdAmount * bcvUsdRate.value.value;
+    } else if (oldCurrency === 'USD' && newCurrency === 'EUR' && bcvUsdRate.value && bcvEurRate.value) {
+        // Convert USD to EUR
+        tempPrice.value = tempPrice.value / bcvUsdRate.value.value * bcvEurRate.value.value;
+    } else if (oldCurrency === 'EUR' && newCurrency === 'USD' && bcvUsdRate.value && bcvEurRate.value) {
+        // Convert EUR to USD
+        tempPrice.value = tempPrice.value / bcvEurRate.value.value * bcvUsdRate.value.value;
+    }
+});
+
 const updateSplitType = async (isPerUnit: boolean) => {
     const newSplitType = isPerUnit ? 'per-unit' : 'shared';
     const oldSplitType = props.item.split_type || 'shared';
@@ -223,16 +286,33 @@ const updateSplitType = async (isPerUnit: boolean) => {
 
                     <!-- Prices -->
                     <div class="space-y-1 text-xs text-[#706f6c] dark:text-[#A1A09A]">
-                        <div v-if="isEditingPrice" class="flex gap-2">
+                        <div v-if="isEditingPrice" class="space-y-2">
+                            <!-- Currency selector for editing -->
+                            <div class="flex items-center gap-2">
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="radio" value="VES" v-model="editCurrency" class="h-4 w-4" />
+                                    <span class="text-xs">VES</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="radio" value="USD" v-model="editCurrency" class="h-4 w-4" />
+                                    <span class="text-xs">USD</span>
+                                </label>
+                                <label class="flex items-center gap-1 cursor-pointer">
+                                    <input type="radio" value="EUR" v-model="editCurrency" class="h-4 w-4" />
+                                    <span class="text-xs">EUR</span>
+                                </label>
+                            </div>
                             <Input :model-value="tempPrice ?? undefined"
                                 @update:model-value="tempPrice = $event ? Number($event) : null" type="number"
                                 step="0.01" @blur="savePrice(); isEditingPrice = false"
                                 @keydown.enter="savePrice(); isEditingPrice = false"
-                                @keydown.esc="isEditingPrice = false" placeholder="VES" class="text-xs" />
+                                @keydown.esc="isEditingPrice = false" :placeholder="`Price in ${editCurrency}`"
+                                class="text-xs" />
                         </div>
                         <div v-else @click="startEditPrice" class="cursor-pointer">
                             <div>VES: {{ vesPrice }}</div>
                             <div>USD: ${{ item.price_usd?.toFixed(2) ?? '0.00' }}</div>
+                            <div>EUR: €{{ itemPriceEur ?? '0.00' }}</div>
                         </div>
                     </div>
 
