@@ -62,6 +62,63 @@ const consumerTotals = computed(() => {
     return totals;
 });
 
+const consumerItems = computed(() => {
+    const itemsByConsumer = new Map<string | number, Array<{ item: Item; amountUsd: number; amountVes: number }>>();
+
+    // Initialize all consumers with empty arrays
+    props.consumers.forEach(consumer => {
+        itemsByConsumer.set(consumer.id!, []);
+    });
+
+    // Find items for each consumer based on participations and calculate their share
+    props.items.forEach(item => {
+        const participations = props.participationsByItem.get(item.id!) || [];
+
+        if (participations.length === 0) return;
+
+        const splitType = item.split_type || 'shared';
+
+        participations.forEach(participation => {
+            const consumerId = participation.consumer_id;
+            const currentItems = itemsByConsumer.get(consumerId) || [];
+
+            // Check if item already exists for this consumer
+            const existingItemIndex = currentItems.findIndex(i => i.item.id === item.id);
+
+            let consumerShareUsd = 0;
+
+            if (splitType === 'shared') {
+                // Shared split: divide price equally among all participants
+                consumerShareUsd = item.price_usd / participations.length;
+            } else {
+                // Per-unit split: multiply price by quantity
+                consumerShareUsd = item.price_usd * participation.qty;
+            }
+
+            const consumerShareVes = bcvUsdRate.value
+                ? consumerShareUsd * bcvUsdRate.value.value
+                : 0;
+
+            if (existingItemIndex >= 0) {
+                // If item already exists, add to the existing amount
+                currentItems[existingItemIndex].amountUsd += consumerShareUsd;
+                currentItems[existingItemIndex].amountVes += consumerShareVes;
+            } else {
+                // Add new item with calculated share
+                currentItems.push({
+                    item,
+                    amountUsd: consumerShareUsd,
+                    amountVes: consumerShareVes
+                });
+            }
+
+            itemsByConsumer.set(consumerId, currentItems);
+        });
+    });
+
+    return itemsByConsumer;
+});
+
 const consumerTotalsArray = computed(() => {
     return props.consumers
         .map(consumer => ({
@@ -69,7 +126,8 @@ const consumerTotalsArray = computed(() => {
             totalUsd: consumerTotals.value.get(consumer.id!) || 0,
             totalVes: bcvUsdRate.value
                 ? (consumerTotals.value.get(consumer.id!) || 0) * bcvUsdRate.value.value
-                : 0
+                : 0,
+            items: consumerItems.value.get(consumer.id!) || []
         }))
         .filter(item => item.totalUsd > 0) // Only show consumers with amounts to pay
         .sort((a, b) => b.totalUsd - a.totalUsd); // Sort by amount descending
@@ -86,11 +144,11 @@ const consumerTotalsArray = computed(() => {
             <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
                     <span class="text-[#706f6c] dark:text-[#A1A09A]">Total Cost (USD):</span>
-                    <span class="font-medium">${{ totalCostUsd.toFixed(2) }}</span>
+                    <span class="font-medium font-mono tabular-nums">${{ totalCostUsd.toFixed(2) }}</span>
                 </div>
                 <div class="flex justify-between">
                     <span class="text-[#706f6c] dark:text-[#A1A09A]">Total Cost (VES):</span>
-                    <span class="font-medium">{{ totalCostVes.toFixed(2) }} Bs</span>
+                    <span class="font-medium font-mono tabular-nums">{{ totalCostVes.toFixed(2) }} Bs</span>
                 </div>
             </div>
 
@@ -102,12 +160,21 @@ const consumerTotalsArray = computed(() => {
                     </div>
                 </div>
                 <div v-for="item in consumerTotalsArray" :key="item.consumer.id"
-                    class="flex items-start justify-between rounded-md border border-[#e3e3e0] bg-[#FDFDFC] p-2 text-sm dark:border-[#3E3E3A] dark:bg-[#1C1C1A]">
-                    <span class="font-medium">{{ item.consumer.name }}</span>
-                    <div class="text-right">
-                        <div class="font-semibold">${{ item.totalUsd.toFixed(2) }}</div>
-                        <div class="text-xs text-[#706f6c] dark:text-[#A1A09A]">
-                            {{ item.totalVes.toFixed(2) }} Bs
+                    class="rounded-md border border-[#e3e3e0] bg-[#FDFDFC] p-2 text-sm dark:border-[#3E3E3A] dark:bg-[#1C1C1A]">
+                    <div class="flex items-start justify-between mb-1">
+                        <span class="font-medium">{{ item.consumer.name }}</span>
+                        <div class="text-right">
+                            <div class="font-semibold font-mono tabular-nums">${{ item.totalUsd.toFixed(2) }}</div>
+                            <div class="text-xs text-[#706f6c] dark:text-[#A1A09A] font-mono tabular-nums">
+                                {{ item.totalVes.toFixed(2) }} Bs
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="item.items.length > 0" class="mt-2 space-y-1">
+                        <div v-for="consumedItem in item.items" :key="consumedItem.item.id"
+                            class="flex justify-between text-xs text-[#706f6c] dark:text-[#A1A09A]">
+                            <span class="flex-1 pr-4">{{ consumedItem.item.name }}</span>
+                            <span class="font-medium text-right min-w-[70px] font-mono tabular-nums">${{ consumedItem.amountUsd.toFixed(2) }}</span>
                         </div>
                     </div>
                 </div>
